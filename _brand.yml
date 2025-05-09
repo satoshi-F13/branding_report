@@ -1,0 +1,56 @@
+meta:
+  name: case study x
+  links:
+    home: 
+
+
+
+color:
+  palette:
+    coolgray2: "#D0D1CE"
+    blackc: "#262626"
+    326c: "#00B2AA"
+    odysseygray: "#444452"
+
+  foreground: blackc
+  background: "#ECEDEB"
+  primary: coolgray2
+  secondary: odysseygray
+  success: 326c
+  info: "#7C7C86"
+  warning: "#FFCDB2"
+  danger: "#B5828C"
+  light: "#E5E6E4"
+  dark: "#676767"
+
+typography:
+  fonts:
+    - family: Lato
+      source: google
+    - family: Adamina
+      source: google
+
+  base:
+    family: Lato
+    line-height: 1.6
+  headings:
+    family: Adamina 
+    weight: 600  # 400 is equivalent to "regular" in most font systems
+  link:
+    color: primary
+    decoration: underline
+
+
+defaults:
+  bootstrap:
+    defaults: # defaults also supports a string as its value
+      link-decoration: underline
+      navbar-fg: "#fff"
+  quarto:
+    format:
+      # basic format-specific settings
+      html:
+      revealjs:
+      typst:
+  shiny:
+    # shiny specific settings

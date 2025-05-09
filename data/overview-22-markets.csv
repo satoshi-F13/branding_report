@@ -1,0 +1,20 @@
+"region","country","index","market","first_year_cleaned_data"
+"Asia","Asia","MSCI All Country Asia ex Japan","11 Asian markets, excluding Japan",2008
+"Asia","China","SSE Composite Index","Shanghai Stock Exchange (SSE)",2006
+"Asia","India","S&P BSE SENSEX","Bombay Stock Exchange (BSE)",2006
+"Asia","Indonesia","JCI","Jakarta Stock Exchange",2010
+"Asia","Japan","Nikkei 225","Tokyo Stock Exchange (TSE)",2007
+"Asia","Malaysia","KLCI","Bursa Malaysia",1993
+"Asia","Singapore","STI","Singapore Exchange",2007
+"Asia","South Korea","KOSPI","Korea Stock Exchange",2009
+"Asia","Taiwan","TWSE","Taiwan Stock Exchange (TWSE)",2010
+"Europe","Europe","STXE 600","17 European countries",2004
+"Europe","France","CAC 40","Paris Stock Exchange",2006
+"Europe","Germany","DAX","Frankfurt Stock Exchange (FRA)",2006
+"Europe","Italy","FTSE MIB","Italian Stocks Exchange",2005
+"Europe","Spain","IBEX 35","Madrid Stock Exchange",2006
+"Europe","The Netherlands","AEX","Amsterdam stock exchange",2008
+"Europe","United Kingdom","FTSE 100","London Stock Exchange",2006
+"Middle East","Saudi Arabia","Tadawul All Share Index (TASI)","Saudi Stock Exchange (Tadawul)",2020
+"North America","Canada","S&P/TSX Composite Index","Toronto Stock Exchange (TSX)",2005
+"North America","USA","S&P 500","New York Stock Exchange (NYSE)",1993
