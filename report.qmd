@@ -16,6 +16,8 @@ execute:
 
 ```{r setup, include=FALSE}
 # Load necessary libraries
+library(zoo)
+library(dplyr)
 library(tidyverse)
 library(ggplot2)
 library(plotly)
@@ -73,7 +75,7 @@ First, we'll analyze market stability by looking at volatility measures and risk
 ```{r stability_metrics}
 # Calculate stability metrics for each country
 stability_metrics <- all_comparisons %>%
-  group_by(country, region) %>%
+  group_by(country, benchmark) %>%
   summarize(
     mean_return = mean(country_return, na.rm = TRUE),
     median_return = median(country_return, na.rm = TRUE),
@@ -335,7 +337,7 @@ Let's compare the performance of Asian vs. European markets to determine which r
 ```{r regional_comparison}
 # Add region information
 all_comparisons <- all_comparisons %>%
-  mutate(region = case_when(
+  mutate(benchmark = case_when(
     benchmark == "Asia8" ~ "Asia",
     benchmark == "Euro7" ~ "Europe",
     TRUE ~ "Other"
@@ -343,7 +345,7 @@ all_comparisons <- all_comparisons %>%
 
 # Calculate regional performance metrics
 regional_metrics <- all_comparisons %>%
-  group_by(region) %>%
+  group_by(benchmark) %>%
   summarize(
     mean_return = mean(country_return, na.rm = TRUE),
     median_return = median(country_return, na.rm = TRUE),
@@ -374,14 +376,14 @@ regional_metrics %>%
 
 # Visual comparison of regions
 regional_comparison <- all_comparisons %>%
-  group_by(region, year) %>%
+  group_by(benchmark, year) %>%
   summarize(
     mean_return = mean(country_return, na.rm = TRUE),
     .groups = 'drop'
   )
 
 # Plot regional returns over time
-ggplot(regional_comparison, aes(x = year, y = mean_return, color = region, group = region)) +
+ggplot(regional_comparison, aes(x = year, y = mean_return, color = benchmark, group = benchmark)) +
   geom_line(linewidth = 1) +
   geom_point() +
   theme_minimal() +
@@ -439,7 +441,7 @@ performance_combined <- stability_metrics %>%
     by = "country"
   ) %>%
   # Add region information
-  mutate(region = case_when(
+  mutate(benchmark = case_when(
     country %in% unique(all_asian_comparisons$country) ~ "Asia",
     country %in% unique(all_european_comparisons$country) ~ "Europe",
     TRUE ~ "Other"
@@ -447,7 +449,7 @@ performance_combined <- stability_metrics %>%
 
 # Plot correlation between returns and outperformance
 ggplot(performance_combined, aes(x = mean_return, y = pct_outperformed, 
-                                color = region, size = sharpe_ratio)) +
+                                color = benchmark, size = sharpe_ratio)) +
   geom_point(alpha = 0.7) +
   geom_text(aes(label = country), hjust = -0.2, vjust = 0, size = 3) +
   scale_color_manual(values = c("Asia" = "#FF9933", "Europe" = "#003399")) +
@@ -535,14 +537,14 @@ ggplot(outperformance_summary, aes(x = reorder(country, pct_outperformed), y = p
 ```{r volatility_over_time}
 # Calculate volatility (standard deviation) for each year
 yearly_volatility <- all_comparisons %>%
-  group_by(year, region) %>%
+  group_by(year, benchmark) %>%
   summarize(
     volatility = sd(country_return, na.rm = TRUE),
     .groups = 'drop'
   )
 
 # Plot volatility trends
-ggplot(yearly_volatility, aes(x = year, y = volatility, color = region, group = region)) +
+ggplot(yearly_volatility, aes(x = year, y = volatility, color = benchmark, group = benchmark)) +
   geom_line(linewidth = 1) +
   geom_point() +
   theme_minimal() +
@@ -560,7 +562,7 @@ ggplot(yearly_volatility, aes(x = year, y = volatility, color = region, group = 
 
 ```{r return_distribution}
 # Create density plots for return distributions
-ggplot(all_comparisons, aes(x = country_return, fill = region)) +
+ggplot(all_comparisons, aes(x = country_return, fill = benchmark)) +
   geom_density(alpha = 0.5) +
   scale_fill_manual(values = c("Asia" = "#FF9933", "Europe" = "#003399")) +
   labs(
@@ -596,18 +598,18 @@ names(corr_df) <- c("Country1", "Country2", "Correlation")
 
 # Add region information
 country_regions <- all_comparisons %>%
-  select(country, region) %>%
+  select(country, benchmark) %>%
   distinct()
 
 corr_df <- corr_df %>%
   left_join(country_regions, by = c("Country1" = "country")) %>%
-  rename(Region1 = region) %>%
+  rename(Region1 = benchmark) %>%
   left_join(country_regions, by = c("Country2" = "country")) %>%
-  rename(Region2 = region)
+  rename(Region2 = benchmark)
 
 # Order countries by region
 ordered_countries <- country_regions %>%
-  arrange(region, country) %>%
+  arrange(benchmark, country) %>%
   pull(country)
 
 # Create correlation heatmap
@@ -638,7 +640,7 @@ This visualization helps us understand the distribution of returns for each coun
 ```{r}
 # Create boxplots of returns by country
 ggplot(all_comparisons, aes(x = reorder(country, country_return, FUN = median), 
-                            y = country_return, fill = region)) +
+                            y = country_return, fill = benchmark)) +
   geom_boxplot() +
   scale_fill_manual(values = c("Asia" = "#FF9933", "Europe" = "#003399")) +
   theme_minimal() +
@@ -667,7 +669,7 @@ crisis_years <- c(2008, 2020)  # Global Financial Crisis, COVID-19 pandemic
 crisis_performance <- all_comparisons %>%
   filter(year %in% crisis_years) %>%
   mutate(crisis = ifelse(year == 2008, "2008 Financial Crisis", "2020 COVID-19")) %>%
-  group_by(country, region, crisis) %>%
+  group_by(country, benchmark, crisis) %>%
   summarize(
     return = mean(country_return),
     .groups = 'drop'
@@ -676,7 +678,7 @@ crisis_performance <- all_comparisons %>%
 
 # Visualize crisis performance
 ggplot(crisis_performance, aes(x = reorder(interaction(country, crisis), return), 
-                               y = return, fill = region)) +
+                               y = return, fill = benchmark)) +
   geom_col() +
   geom_text(aes(label = sprintf("%.1f%%", return)), 
             hjust = ifelse(crisis_performance$return < 0, 1.1, -0.1),
@@ -707,7 +709,7 @@ post_crisis_years <- c(2009, 2021)  # Years after crises
 post_crisis_performance <- all_comparisons %>%
   filter(year %in% post_crisis_years) %>%
   mutate(recovery_period = ifelse(year == 2009, "Post-2008 Recovery", "Post-COVID Recovery")) %>%
-  group_by(country, region, recovery_period) %>%
+  group_by(country, benchmark, recovery_period) %>%
   summarize(
     return = mean(country_return),
     .groups = 'drop'
@@ -716,7 +718,7 @@ post_crisis_performance <- all_comparisons %>%
 
 # Visualize post-crisis recovery
 ggplot(post_crisis_performance, aes(x = reorder(interaction(country, recovery_period), return), 
-                                    y = return, fill = region)) +
+                                    y = return, fill = benchmark)) +
   geom_col() +
   geom_text(aes(label = sprintf("%.1f%%", return)), 
             hjust = -0.1, size = 3) +
@@ -751,13 +753,13 @@ complete_grid <- expand.grid(
 
 # Join with actual data to fill in returns
 complete_data <- complete_grid %>%
-  left_join(all_comparisons %>% select(year, country, country_return, region), 
+  left_join(all_comparisons %>% select(year, country, country_return, benchmark), 
             by = c("year", "country"))
 
 # Fill in region information for missing years
 complete_data <- complete_data %>%
   group_by(country) %>%
-  fill(region, .direction = "downup") %>%
+  fill(benchmark, .direction = "downup") %>%
   ungroup()
 
 # Calculate 3-year rolling returns
@@ -775,7 +777,7 @@ rolling_returns <- complete_data %>%
 ggplot(rolling_returns %>% filter(!is.na(rolling_3yr_return)), 
        aes(x = year, y = rolling_3yr_return, color = country, group = country)) +
   geom_line() +
-  facet_wrap(~region) +
+  facet_wrap(~benchmark) +
   theme_minimal() +
   theme(legend.position = "bottom") +
   guides(color = guide_legend(nrow = 2)) +
@@ -839,7 +841,7 @@ risk_return_interactive <- ggplot(stability_metrics,
                                                  "\nReturn:", round(mean_return, 2), "%",
                                                  "\nRisk:", round(std_dev, 2), "%",
                                                  "\nSharpe:", round(sharpe_ratio, 3)))) +
-  geom_point(aes(color = region, size = sharpe_ratio)) +
+  geom_point(aes(color = benchmark, size = sharpe_ratio)) +
   scale_color_manual(values = c("Asia" = "#FF9933", "Europe" = "#003399")) +
   theme_minimal() +
   labs(
@@ -957,7 +959,7 @@ markets_to_avoid %>%
 ```{r attractive_region_conclusion}
 # Compare regions
 regional_metrics %>%
-  filter(region %in% c("Asia", "Europe")) %>%
+  filter(benchmark %in% c("Asia8", "Euro7")) %>%
   mutate(
     mean_return = sprintf("%.2f%%", mean_return),
     median_return = sprintf("%.2f%%", median_return),

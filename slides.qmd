@@ -1,0 +1,794 @@
+---
+title: "Index Market Analysis Report"
+subtitle: "Comparative Analysis of Asian and European Markets"
+author: "S.Matsumoto"
+date: "2024-10-28"
+format:
+  revealjs:
+    theme:
+      - custom.scss
+      - brand
+    transition: slide
+    slide-number: true
+    footer: "Market Analysis 2024"
+    self-contained: true
+execute:
+  echo: false
+  warning: false
+  message: false
+
+---
+
+```{r setup, include=FALSE}
+# Load necessary libraries
+library(tidyverse)
+library(ggplot2)
+library(plotly)
+library(DT)
+library(knitr)
+library(patchwork)
+library(scales)
+library(viridis)
+library(corrplot)
+library(kableExtra)
+```
+
+```{r load_data}
+# Load the CSV files
+all_asian_comparisons <- read.csv("data/all_asian_comparisons.csv", stringsAsFactors = FALSE)
+all_european_comparisons <- read.csv("data/all_european_comparisons.csv", stringsAsFactors = FALSE)
+asia_europe_comparison <- read.csv("data/asia_europe_comparison.csv", stringsAsFactors = FALSE)
+countrybenchmarkcomparisons <- read.csv("data/country-benchmark-comparisons.csv", stringsAsFactors = FALSE)
+outperformance_summary_euro_asia <- read.csv("data/outperformance_summary_euro_asia.csv", stringsAsFactors = FALSE)
+outperformance_summary <- read.csv("data/outperformance-summary.csv", stringsAsFactors = FALSE)
+
+# Combine Asian and European data
+all_comparisons <- rbind(all_asian_comparisons, all_european_comparisons)
+
+# Remove Saudi Arabia as specified in the instructions
+all_comparisons <- all_comparisons %>% filter(country != "Saudiarabia")
+outperformance_summary <- outperformance_summary %>% filter(country != "Saudiarabia")
+outperformance_summary_euro_asia <- outperformance_summary_euro_asia %>% filter(country != "Saudiarabia")
+```
+
+## Introduction
+
+This analysis explores investment opportunities across Asian and
+European markets, focusing on:
+
+1.  Identifying **stable markets** for consistent profits
+2.  Finding **high-return countries** for growth investment
+3.  Determining **markets to avoid**
+4.  Comparing investment attractiveness between **Asia** and **Europe**
+
+## Executive Summary
+
+Our analysis reveals several key insights:
+
+-   **Most stable markets:** India, Indonesia, and Singapore
+-   **Highest returning markets:** India, Indonesia, and Germany
+-   **Markets to avoid:** Italy, Spain, and France
+-   **Regional comparison:** Asian markets show higher returns with
+    higher volatility, while European markets (Germany, Netherlands)
+    demonstrate more consistent performance
+
+## 1. Market Stability Analysis {.section .center}
+
+::: notes
+The first section focuses on which markets provide the most stable
+returns.
+:::
+
+## Market Stability Metrics
+
+```{r}
+# Calculate stability metrics for each country
+stability_metrics <- all_comparisons %>%
+  group_by(country, benchmark) %>%
+  summarize(
+    mean_return = mean(country_return, na.rm = TRUE),
+    std_dev = sd(country_return, na.rm = TRUE),
+    coef_variation = std_dev / abs(mean_return),  # coefficient, lower values indicate more stable returns relative to the average return.
+    sharpe_ratio = mean_return / std_dev,
+    pos_years_pct = mean(country_return > 0, na.rm = TRUE) * 100,
+    n_years = n(),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(sharpe_ratio))
+
+# Create a table of stability metrics
+stability_metrics %>%
+  head(6) %>%
+  mutate(
+    mean_return = sprintf("%.2f%%", mean_return),
+    std_dev = sprintf("%.2f%%", std_dev),
+    coef_variation = round(coef_variation, 2),# coefficient of variation
+    sharpe_ratio = round(sharpe_ratio, 3),
+    pos_years_pct = sprintf("%.1f%%", pos_years_pct)
+  ) %>%
+  select(country, mean_return, std_dev, sharpe_ratio, pos_years_pct) %>%
+  kable(
+    caption = "Top Markets by Stability Metrics",
+    col.names = c("Country", "Mean Return", "Std Dev", "Sharpe Ratio", "% Positive Years"),
+    align = "lrrrr"
+  )
+```
+
+## Sharp Return
+
+**Higher values are better**: A higher Sharpe ratio indicates better
+risk-adjusted performance
+
+|                      |                                         |
+|----------------------|-----------------------------------------|
+| Sharpe ratio \< 1.0: | Poor risk-adjusted return               |
+| Sharpe ratio 1.0-2.0 | Acceptable to good risk-adjusted return |
+| Sharpe ratio \> 2.0: | Excellent risk-adjusted return          |
+
+## Risk-Return Analysis
+
+```{r}
+# Create a risk-return plot
+ggplot(stability_metrics, aes(x = std_dev, y = mean_return, size = sharpe_ratio,
+                             color = factor(ifelse(country %in% c("India", "Indonesia", "Germany", "China", "South Korea"), country, "Other")))) +
+  geom_point(alpha = 0.7) +
+  geom_text(aes(label = country), hjust = -0.2, vjust = 0, size = 3) +
+  scale_color_manual(values = c("India" = "#FF9933", "Indonesia" = "#FF0000", "Germany" = "#000000", 
+                               "China" = "#DE2910", "South Korea" = "#003478", "Other" = "#999999")) +
+  labs(
+    title = "Risk vs. Return by Country",
+    x = "Risk (Standard Deviation of Returns, %)",
+    y = "Average Annual Return (%)",
+    color = "Country"
+  ) +
+  theme_minimal() +
+  # Add reference lines for the average risk and return
+  geom_hline(yintercept = mean(stability_metrics$mean_return), linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = mean(stability_metrics$std_dev), linetype = "dashed", alpha = 0.5)
+```
+
+## Market Consistency
+
+```{r}
+# Calculate positive and negative year streaks
+streak_analysis <- function(returns) {
+  current_streak <- 0
+  current_sign <- NA
+  pos_streaks <- c()
+  neg_streaks <- c()
+  
+  for (ret in returns) {
+    sign <- ret >= 0
+    if (is.na(current_sign)) {
+      current_sign <- sign
+      current_streak <- 1
+    } else if (sign == current_sign) {
+      current_streak <- current_streak + 1
+    } else {
+      if (current_sign) {
+        pos_streaks <- c(pos_streaks, current_streak)
+      } else {
+        neg_streaks <- c(neg_streaks, current_streak)
+      }
+      current_sign <- sign
+      current_streak <- 1
+    }
+  }
+  
+  # Add the final streak
+  if (!is.na(current_sign)) {
+    if (current_sign) {
+      pos_streaks <- c(pos_streaks, current_streak)
+    } else {
+      neg_streaks <- c(neg_streaks, current_streak)
+    }
+  }
+  
+  list(
+    max_pos_streak = if (length(pos_streaks) > 0) max(pos_streaks) else 0,
+    max_neg_streak = if (length(neg_streaks) > 0) max(neg_streaks) else 0
+  )
+}
+# Calculate streak metrics
+streak_metrics <- all_comparisons %>%
+  group_by(country) %>%
+  arrange(country, year) %>%
+  summarize(
+    returns = list(country_return),
+    .groups = 'drop'
+  ) %>%
+  rowwise() %>%
+  mutate(
+    streaks = list(streak_analysis(returns)),
+    max_pos_streak = streaks$max_pos_streak,
+    max_neg_streak = streaks$max_neg_streak
+  ) %>%
+  select(country, max_pos_streak, max_neg_streak)
+
+# Join with stability metrics
+consistency_metrics <- stability_metrics %>%
+  left_join(streak_metrics, by = "country") %>%
+  arrange(desc(pos_years_pct))
+
+# Visualize consistency
+consistency_metrics %>%
+  arrange(desc(pos_years_pct)) %>%
+  head(10) %>%
+ggplot(aes(x = reorder(country, pos_years_pct), y = pos_years_pct, 
+                                fill = ifelse(max_pos_streak >= 3, "High", "Moderate"))) +
+  geom_col() +
+  geom_text(aes(label = sprintf("%.0f%%", pos_years_pct)), hjust = -0.1) +
+  scale_fill_manual(values = c("High" = "#4CAF50", "Moderate" = "#81C784")) +
+  coord_flip() +
+  labs(
+    title = "Market Consistency Analysis",
+    subtitle = "Percentage of years with positive returns",
+    x = "",
+    y = "Percentage of Years with Positive Returns",
+    fill = "Consistency Level"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## 2. High-Return Markets Analysis {.section .center}
+
+::: notes
+The second section identifies markets with the highest returns.
+:::
+
+## Top Performing Markets
+
+```{r}
+# Sort by mean return (descending)
+ggplot(stability_metrics, aes(x = reorder(country, mean_return), y = mean_return, 
+                             fill = ifelse(country %in% head(arrange(stability_metrics, desc(mean_return)), 5)$country, "Top", "Other"))) +
+  geom_col() +
+  geom_text(aes(label = sprintf("%.1f%%", mean_return)), hjust = -0.1) +
+  scale_fill_manual(values = c("Top" = "#FFC107", "Other" = "#FFECB3")) +
+  coord_flip() +
+  labs(
+    title = "Average Annual Returns by Country",
+    x = "",
+    y = "Average Annual Return (%)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## Annual Returns of Top Performers
+
+```{r}
+# Get top 5 performing markets
+high_return_markets <- stability_metrics %>%
+  arrange(desc(mean_return)) %>%
+  head(5)
+
+# Plot yearly returns of top performers
+all_comparisons %>%
+  filter(country %in% high_return_markets$country) %>%
+  ggplot(aes(x = year, y = country_return, color = country, group = country)) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  theme_minimal() +
+  labs(
+    title = "Annual Returns of Top-Performing Markets",
+    x = "Year",
+    y = "Annual Return (%)",
+    color = "Country"
+  ) +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "bottom")
+```
+
+## 3. Markets to Avoid {.section .center}
+
+::: notes
+The third section identifies markets that investors should avoid.
+:::
+
+## Poor Risk-Adjusted Returns
+
+```{r}
+# Identify markets with poor risk-adjusted returns
+markets_to_avoid <- stability_metrics %>%
+  arrange(sharpe_ratio) %>%
+  head(5)
+
+# Visualize markets to avoid
+ggplot(stability_metrics, aes(x = reorder(country, -sharpe_ratio), y = sharpe_ratio, 
+                             fill = ifelse(country %in% markets_to_avoid$country, "Bottom", "Other"))) +
+  geom_col() +
+  geom_text(aes(label = sprintf("%.3f", sharpe_ratio)), vjust = -0.3) +
+  scale_fill_manual(values = c("Bottom" = "#F44336", "Other" = "#FFCDD2")) +
+  labs(
+    title = "Risk-Adjusted Returns (Sharpe Ratio) by Country",
+    subtitle = "Lower values indicate poor risk-reward tradeoff",
+    x = "Country",
+    y = "Sharpe Ratio (Return/Risk)"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+## Market Evaluation Framework
+
+```{r}
+mean_sharpe <- mean(stability_metrics$sharpe_ratio)
+mean_pos_years <- mean(stability_metrics$pos_years_pct)
+
+ggplot(stability_metrics, aes(x = sharpe_ratio, y = pos_years_pct, color = factor(ifelse(country %in% markets_to_avoid$country, "Avoid", "Consider")))) +
+  geom_point(size = 3) +
+  geom_text(aes(label = country), hjust = -0.2, vjust = 0, size = 3) +
+  scale_color_manual(values = c("Avoid" = "#F44336", "Consider" = "#4CAF50")) +
+  geom_hline(yintercept = mean_pos_years, linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = mean_sharpe, linetype = "dashed", alpha = 0.5) +
+  annotate("rect", xmin = min(stability_metrics$sharpe_ratio), xmax = mean_sharpe,
+           ymin = min(stability_metrics$pos_years_pct), ymax = mean_pos_years,
+           alpha = 0.1, fill = "red") +
+  annotate("text", x = min(stability_metrics$sharpe_ratio) + (mean_sharpe - min(stability_metrics$sharpe_ratio))/2,
+           y = min(stability_metrics$pos_years_pct) + (mean_pos_years - min(stability_metrics$pos_years_pct))/2,
+           label = "AVOID", color = "red", size = 5, alpha = 0.7) +
+  labs(
+    title = "Market Evaluation Framework",
+    subtitle = "Markets in the bottom-left quadrant should be avoided",
+    x = "Risk-Adjusted Return (Sharpe Ratio)",
+    y = "Consistency (% Positive Years)",
+    color = "Recommendation"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## 4. Regional Comparison: Asia vs. Europe {.section .center}
+
+::: notes
+The fourth section compares Asian and European markets.
+:::
+
+## Performance Comparison: Asia vs. Europe
+
+```{r}
+# Calculate regional performance metrics
+regional_metrics <- all_comparisons %>%
+  group_by(benchmark) %>%
+  summarize(
+    mean_return = mean(country_return, na.rm = TRUE),
+    median_return = median(country_return, na.rm = TRUE),
+    std_dev = sd(country_return, na.rm = TRUE),
+    sharpe_ratio = mean_return / std_dev,
+    pos_years_pct = mean(country_return > 0, na.rm = TRUE) * 100,
+    outperformance_rate = mean(outperformed, na.rm = TRUE) * 100,
+    .groups = 'drop'
+  )
+
+# Display regional metrics
+regional_metrics %>%
+  filter(benchmark %in% c("Asia8", "Euro7")) %>%
+  mutate(
+    mean_return = sprintf("%.2f%%", mean_return),
+    median_return = sprintf("%.2f%%", median_return),
+    std_dev = sprintf("%.2f%%", std_dev),
+    sharpe_ratio = round(sharpe_ratio, 3),
+    pos_years_pct = sprintf("%.1f%%", pos_years_pct),
+    outperformance_rate = sprintf("%.1f%%", outperformance_rate)
+  ) %>%
+  kable(
+    caption = "Performance Comparison: Asia vs. Europe",
+    col.names = c("Region", "Mean Return", "Median Return", "Std Dev", "Sharpe Ratio", 
+                  "% Positive Years", "% Outperformance"),
+    align = "lrrrrrr"
+  )
+```
+
+## Regional Returns Over Time
+
+```{r}
+# Visual comparison of regions
+regional_comparison <- all_comparisons %>%
+  group_by(benchmark, year) %>%
+  summarize(
+    mean_return = mean(country_return, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Plot regional returns over time
+ggplot(regional_comparison %>% filter(benchmark %in% c("Asia8", "Euro7")), 
+       aes(x = year, y = mean_return, color = benchmark, group = benchmark)) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  theme_minimal() +
+  labs(
+    title = "Average Returns by Region Over Time",
+    x = "Year",
+    y = "Average Annual Return (%)",
+    color = "Region"
+  ) +
+  scale_color_manual(values = c("Asia8" = "#FF9933", "Euro7" = "#003399")) +
+  theme(legend.position = "bottom")
+```
+
+## Outperformance Analysis
+
+```{r}
+# Country-level outperformance visualization
+ggplot(outperformance_summary_euro_asia, aes(x = reorder(country, pct_outperformed), 
+                                         y = pct_outperformed, fill = benchmark)) +
+  geom_col() +
+  geom_text(aes(label = sprintf("%.1f%%", pct_outperformed)), hjust = -0.1) +
+  scale_fill_manual(values = c("Asia8" = "#FF9933", "Euro7" = "#003399"),
+                   labels = c("Asia8" = "Asia", "Euro7" = "Europe")) +
+  coord_flip() +
+  facet_grid(benchmark ~ ., scales = "free_y", space = "free_y") +
+  labs(
+    title = "Frequency of Outperformance vs Regional Benchmark",
+    subtitle = "Percentage of years each country outperformed its regional benchmark",
+    x = "",
+    y = "Percentage of Years (%)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  ylim(0, 100)
+```
+
+## Return vs Outperformance
+
+```{r}
+# Join the stability metrics with outperformance data
+performance_combined <- stability_metrics %>%
+  left_join(
+    outperformance_summary_euro_asia %>% 
+      select(country, pct_outperformed, avg_outperformance),
+    by = "country"
+  ) %>%
+  # Add region information
+  mutate(benchmark = case_when(
+    country %in% unique(all_asian_comparisons$country) ~ "Asia",
+    country %in% unique(all_european_comparisons$country) ~ "Europe",
+    TRUE ~ "Other"
+  ))
+
+# Plot correlation between returns and outperformance
+ggplot(performance_combined, aes(x = mean_return, y = pct_outperformed, 
+                                color = benchmark, size = sharpe_ratio)) +
+  geom_point(alpha = 0.7) +
+  geom_text(aes(label = country), hjust = -0.2, vjust = 0, size = 3) +
+  scale_color_manual(values = c("Asia" = "#FF9933", "Europe" = "#003399")) +
+  labs(
+    title = "Relationship Between Returns and Benchmark Outperformance",
+    x = "Average Annual Return (%)",
+    y = "% of Years Outperforming Benchmark",
+    color = "Region",
+    size = "Sharpe Ratio"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## Performance Heatmap
+
+```{r}
+# Performance Heatmap
+all_comparisons %>%
+  ggplot(aes(x = year, y = country, fill = difference)) +
+  geom_tile() +
+  scale_fill_gradient2(
+    low = "red", mid = "white", high = "green", 
+    midpoint = 0, name = "Difference (%)"
+  ) +
+  facet_grid(benchmark ~ ., scales = "free_y", space = "free_y") +
+  labs(
+    title = "Country Performance vs Regional Benchmark",
+    subtitle = "Green = outperformed benchmark, Red = underperformed benchmark",
+    x = "Year",
+    y = ""
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+```
+
+## Return Distribution by Region
+
+```{r}
+# Create density plots for return distributions
+ggplot(all_comparisons %>% filter(benchmark %in% c("Asia8", "Euro7")), 
+       aes(x = country_return, fill = benchmark)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_manual(values = c("Asia8" = "#FF9933", "Euro7" = "#003399")) +
+  labs(
+    title = "Distribution of Annual Returns by Region",
+    x = "Annual Return (%)",
+    y = "Density",
+    fill = "Region"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## Market Correlations
+
+```{r}
+
+# Calculate correlation matrix of returns
+country_returns <- all_comparisons %>%
+  select(year, country, country_return) %>%
+  pivot_wider(names_from = country, values_from = country_return)
+
+# Convert to correlation matrix
+corr_matrix <- country_returns %>%
+  select(-year) %>%
+  cor(use = "pairwise.complete.obs")
+
+# Add region information
+country_regions <- all_comparisons %>%
+  select(country, benchmark) %>%
+  distinct()
+
+
+# Order countries by region
+ordered_countries <- country_regions %>%
+  arrange(benchmark, country) %>%
+  pull(country)
+
+# Create a dataframe for plotting
+corr_df <- as.data.frame(as.table(corr_matrix))
+names(corr_df) <- c("Country1", "Country2", "Correlation")
+# Create correlation heatmap
+corr_df %>%
+  filter(Country1 %in% high_return_markets$country | Country2 %in% high_return_markets$country) %>%
+  ggplot(aes(x = factor(Country1, levels = ordered_countries), 
+                    y = factor(Country2, levels = rev(ordered_countries)), 
+                    fill = Correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0,
+                      limits = c(-1, 1)) +
+  geom_text(aes(label = sprintf("%.2f", Correlation)), size = 2.5) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    axis.text.y = element_text(size = 8)
+  ) +
+  labs(
+    title = "Correlation Matrix of Market Returns",
+    subtitle = "Red indicates positive correlation, blue indicates negative correlation",
+    x = NULL, y = NULL
+  )
+```
+
+## Crisis Performance
+
+```{r}
+# Define crisis years
+crisis_years <- c(2008, 2020)  # Global Financial Crisis, COVID-19 pandemic
+
+# Calculate crisis performance
+crisis_performance <- all_comparisons %>%
+  filter(year %in% crisis_years) %>%
+  mutate(crisis = ifelse(year == 2008, "2008 Financial Crisis", "2020 COVID-19")) %>%
+  group_by(country, benchmark, crisis) %>%
+  summarize(
+    return = mean(country_return),
+    .groups = 'drop'
+  ) %>%
+  arrange(crisis, return)
+
+# Visualize crisis performance
+ggplot(crisis_performance, aes(x = reorder(interaction(country, crisis), return), 
+                               y = return, fill = benchmark)) +
+  geom_col() +
+  geom_text(aes(label = sprintf("%.1f%%", return)), 
+            hjust = ifelse(crisis_performance$return < 0, 1.1, -0.1),
+            color = ifelse(crisis_performance$return < 0, "white", "black"),
+            size = 3) +
+  scale_fill_manual(values = c("Asia8" = "#FF9933", "Euro7" = "#003399")) +
+  coord_flip() +
+  facet_wrap(~crisis, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    title = "Market Performance During Crisis Years",
+    x = NULL,
+    y = "Return (%)",
+    fill = "Region"
+  )+
+  theme(
+    legend.position = "top"
+  )
+```
+
+## Risk-Return Efficiency
+
+```{r}
+# Create a risk-return plot with an efficiency frontier
+ggplot(stability_metrics, aes(x = std_dev, y = mean_return)) +
+  # Add points for each country
+  geom_point(aes(color = factor(ifelse(country %in% c("India", "Indonesia", "Germany", "Italy", "Spain"), 
+                                       country, "Other")),
+                size = sharpe_ratio)) +
+  # Add text labels for each country
+  geom_text(aes(label = country), hjust = -0.2, vjust = 0, size = 3) +
+  # Custom color scale
+  scale_color_manual(values = c("India" = "#FF9933", "Indonesia" = "#FF0000", 
+                              "Germany" = "#000000", "Italy" = "#008C45", 
+                              "Spain" = "#AA151B", "Other" = "#999999")) +
+  # Add a curve representing the theoretical efficiency frontier
+  stat_function(fun = function(x) { 2 + 0.5 * x }, 
+                linetype = "dashed", color = "darkblue") +
+  # Add annotations
+  annotate("text", x = max(stability_metrics$std_dev) * 0.8, 
+           y = 2 + 0.5 * max(stability_metrics$std_dev) * 0.8,
+           label = "Theoretical Efficiency Frontier", 
+           color = "darkblue", angle = 20, size = 3) +
+  # Customize theme
+  theme_minimal() +
+  # Add labels
+  labs(
+    title = "Risk-Return Efficiency Analysis",
+    subtitle = "Markets closer to the frontier offer better risk-adjusted returns",
+    x = "Risk (Standard Deviation, %)",
+    y = "Return (%)",
+    color = "Country",
+    size = "Sharpe Ratio"
+  ) +
+  theme(legend.position = "bottom")
+```
+
+## Conclusion {.section .center}
+
+::: notes
+Final conclusions and investment recommendations.
+:::
+
+## Most Stable Markets
+
+```{r}
+# Calculate stability metrics for each country
+stability_metrics <- all_comparisons %>%
+  group_by(country, benchmark) %>%
+  summarize(
+    mean_return = mean(country_return, na.rm = TRUE),
+    median_return = median(country_return, na.rm = TRUE),
+    std_dev = sd(country_return, na.rm = TRUE),
+    coef_variation = std_dev / abs(mean_return),  # Add coefficient of variation
+    sharpe_ratio = mean_return / std_dev,
+    pos_years_pct = mean(country_return > 0, na.rm = TRUE) * 100,
+    n_years = n(),
+    .groups = 'drop'
+  )
+
+# Show the most stable markets with good returns
+stable_markets <- stability_metrics %>%
+  filter(mean_return > 0) %>%  # Only consider markets with positive returns
+  arrange(coef_variation) %>%  # Sort by stability (low coefficient of variation)
+  head(5)
+
+stable_markets %>%
+  mutate(
+    mean_return = sprintf("%.2f%%", mean_return),
+    std_dev = sprintf("%.2f%%", std_dev),
+    coef_variation = round(coef_variation, 2),  # Add coefficient of variation to output
+    sharpe_ratio = round(sharpe_ratio, 3),
+    pos_years_pct = sprintf("%.1f%%", pos_years_pct)
+  ) %>%
+  select(country, mean_return, std_dev, coef_variation, sharpe_ratio, pos_years_pct) %>%
+  kable(
+    caption = "Most Stable Markets for Consistent Profits",
+    col.names = c("Country", "Mean Return", "Std Dev", "CoV", "Sharpe Ratio", "% Positive Years"),
+    align = "lrrrrrr"
+  )%>% 
+    kable_styling(font_size = 24)  
+```
+
+## Highest Return Markets
+
+```{r}
+# Show the highest return markets
+high_return_markets <- stability_metrics %>%
+  arrange(desc(mean_return)) %>%  # Sort by return (descending)
+  head(5)
+
+high_return_markets %>%
+  mutate(
+    mean_return = sprintf("%.2f%%", mean_return),
+    std_dev = sprintf("%.2f%%", std_dev),
+    sharpe_ratio = round(sharpe_ratio, 3),
+    pos_years_pct = sprintf("%.1f%%", pos_years_pct)
+  ) %>%
+  select(country, mean_return, std_dev, sharpe_ratio, pos_years_pct) %>%
+  kable(
+    caption = "Highest Return Markets",
+    col.names = c("Country", "Mean Return", "Std Dev", "Sharpe Ratio", "% Positive Years"),
+    align = "lrrrr"
+  )%>% 
+    kable_styling(font_size = 24)  
+```
+
+## Markets to Avoid
+
+```{r}
+# Show the markets to avoid
+markets_to_avoid <- stability_metrics %>%
+  arrange(sharpe_ratio) %>%  # Sort by Sharpe ratio (ascending)
+  head(5)
+
+markets_to_avoid %>%
+  mutate(
+    mean_return = sprintf("%.2f%%", mean_return),
+    std_dev = sprintf("%.2f%%", std_dev),
+    sharpe_ratio = round(sharpe_ratio, 3),
+    pos_years_pct = sprintf("%.1f%%", pos_years_pct)
+  ) %>%
+  select(country, mean_return, std_dev, sharpe_ratio, pos_years_pct) %>%
+  kable(
+    caption = "Markets to Avoid",
+    col.names = c("Country", "Mean Return", "Std Dev", "Sharpe Ratio", "% Positive Years"),
+    align = "lrrrr"
+  )%>% 
+    kable_styling(font_size = 24)  
+```
+
+## Regional Attractiveness
+
+```{r}
+# Compare regions
+regional_metrics %>%
+  filter(benchmark %in% c("Asia8", "Euro7")) %>%
+  mutate(
+    mean_return = sprintf("%.2f%%", mean_return),
+    median_return = sprintf("%.2f%%", median_return),
+    std_dev = sprintf("%.2f%%", std_dev),
+    sharpe_ratio = round(sharpe_ratio, 3),
+    pos_years_pct = sprintf("%.1f%%", pos_years_pct),
+    outperformance_rate = sprintf("%.1f%%", outperformance_rate)
+  ) %>%
+  kable(
+    caption = "Attractiveness by Region",
+    col.names = c("Region", "Mean Return", "Median Return", "Std Dev", "Sharpe Ratio", 
+                  "% Positive Years", "% Outperformance"),
+    align = "lrrrrrr"
+  ) %>% 
+    kable_styling(font_size = 24)  
+
+```
+
+## Investment Recommendations {.section .center}
+
+Based on our comprehensive analysis, we recommend:
+
+**For stable returns**: Focus on India, Indonesia, and Singapore
+
+Best combination of stability and consistent profits
+
+**For growth investors**: Consider India, Indonesia, and Germany
+
+Highest average returns with acceptable risk profiles
+
+**Markets to avoid**: Italy, Spain, and France
+
+Poor risk-adjusted returns and inconsistent performance
+
+## Regional allocation {.center}
+
+-  **Asia**: Higher returns with greater volatility (growth-oriented
+investors) 
+-  **Europe**: More consistent performance (conservative
+investors)
+
+## Optimal Portfolio Strategy {.center}
+Recommended Allocation
+
+-  Core (50%): India, Indonesia, Singapore 
+-  Growth (30%): Add Germany
+-  Diversification (20%): Select Netherlands Avoid: Italy, Spain, France
+
+
+
+## Note {.center}
+This is a conceptual portfolio allocation based on the findings.
+Actual allocations should be customized based on investor risk
+profile and investment goals. 
+
+
+# Thank You {.center}

@@ -1,8 +1,16 @@
 meta:
   name: case study x
   links:
-    home: 
+  home: 
 
+logo:
+  images:
+    icon-color: logos/icon/sample_logo.png
+    wide-color: logos/wide/sample_logo.png
+    tall-color: logos/wide/sample_logo.png
+  small: icon-color
+  medium: wide-color
+  large: tall-color
 
 
 color:
@@ -39,7 +47,9 @@ typography:
   link:
     color: primary
     decoration: underline
-
+  monospace:
+    family: Lato
+    size: 1em
 
 defaults:
   bootstrap:
